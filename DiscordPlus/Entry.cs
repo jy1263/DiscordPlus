@@ -1,4 +1,4 @@
-﻿using ModHelper;
+﻿using MelonLoader;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,17 +6,9 @@ using System.Text;
 
 namespace DiscordPlus
 {
-    public class Entry : IMod
+    public class Entry : MelonMod
     {
-        public string Name => "DiscordPlus";
-
-        public string Description => "";
-
-        public string Author => "Mo10";
-
-        public string HomePage => "https://github.com/mo10/DiscordPlus";
-
-        public void DoPatching()
+        public override void OnApplicationStart()
         {
             DiscordPlus.DoPatching();
         }

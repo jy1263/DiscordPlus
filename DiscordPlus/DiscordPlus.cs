@@ -3,13 +3,14 @@ using Assets.Scripts.PeroTools.Managers;
 using Assets.Scripts.PeroTools.Nice.Datas;
 using Assets.Scripts.PeroTools.Nice.Interface;
 using Discord;
-using FormulaBase;
 using HarmonyLib;
-using ModHelper;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
-using UnityEngine.Events;
+using Il2CppSystem;
+using UnhollowerBaseLib;
+using UnhollowerRuntimeLib;
+using MulticastDelegate = Il2CppSystem.MulticastDelegate;
 
 namespace DiscordPlus
 {
@@ -25,13 +26,13 @@ namespace DiscordPlus
 		public static JArray ChartData = null;
         public static void DoPatching()
         {
-            var harmony = new Harmony("com.github.mo10.discordplus");
+            var harmony = new HarmonyLib.Harmony("com.github.mo10.discordplus");
 
-            var discord = AccessTools.Constructor(typeof(Discord.Discord),new Type[] { typeof(long), typeof(ulong) });
+            var discord = AccessTools.Constructor(typeof(Discord.Discord),new System.Type[] { typeof(long), typeof(ulong) });
             var discordPrefix = AccessTools.Method(typeof(DiscordPlus), "DiscordPrefix");
             harmony.Patch(discord, new HarmonyMethod(discordPrefix));
 
-            var setUpdateActivity = AccessTools.Method(typeof(DiscordManager), "SetUpdateActivity", new Type[] { typeof(bool), typeof(string) });
+            var setUpdateActivity = AccessTools.Method(typeof(DiscordManager), "SetUpdateActivity", new System.Type[] { typeof(bool), typeof(string) });
             var setUpdateActivityPrefix = AccessTools.Method(typeof(DiscordPlus), "SetUpdateActivityPrefix");
             harmony.Patch(setUpdateActivity, new HarmonyMethod(setUpdateActivityPrefix));
         }
@@ -46,31 +47,36 @@ namespace DiscordPlus
 					url: "https://mdmc.moe/api/data/charts",
 					method: "GET",
 					failTime: 10,
-					callback: handler =>
-					{
-						ChartData = JArray.Parse(handler.text);
-					},
-					faillCallback: reason =>
-					{
-						ModLogger.Debug($"Send request failed: {reason}");
-						ChartDataLoaded = false;
-					});
+					callback: DelegateSupport.ConvertDelegate<Il2CppSystem.Action<UnityEngine.Networking.DownloadHandler>>(
+						new System.Action<UnityEngine.Networking.DownloadHandler>
+						(delegate(UnityEngine.Networking.DownloadHandler handler)
+						{
+							ChartData = JArray.Parse(handler.text);
+						})
+					),
+					faillCallback: DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
+						new System.Action<string>
+						(delegate(string handler)
+						{
+							// ModLogger.Debug($"Send request failed: {reason}");
+							ChartDataLoaded = false;
+						})
+					)
+				);
 			}
 		}
 		
 		public static bool SetUpdateActivityPrefix(ref bool isPlaying,ref string levelInfo, ref DiscordManager __instance)
 		{
-			if (__instance.activityManager == null || __instance.applicationManager == null)
+			if (__instance.m_ActivityManager == null || __instance.m_ApplicationManager == null)
 			{
 				return false;
 			}
 
-
-			string musicUid = Singleton<DataManager>.instance["Account"]["SelectedMusicUid"].GetResult<string>();
-			string musicPackage = Singleton<DataManager>.instance["Account"]["SelectedAlbumUid"].GetResult<string>();
-			string musicLevel = Singleton<DataManager>.instance["Account"]["SelectedMusicLevel"].GetResult<string>();
-			int diffculty = Singleton<DataManager>.instance["Account"]["SelectedDifficulty"].GetResult<int>();
-
+			string musicUid = VariableUtils.GetResult<string>(Singleton<DataManager>.instance["Account"]["SelectedMusicUid"]);
+			string musicPackage = VariableUtils.GetResult<string>(Singleton<DataManager>.instance["Account"]["SelectedAlbumUid"]);
+			string musicLevel = VariableUtils.GetResult<string>(Singleton<DataManager>.instance["Account"]["SelectedMusicLevel"]);
+			int diffculty = VariableUtils.GetResult<int>(Singleton<DataManager>.instance["Account"]["SelectedDifficulty"]);
 
 			string diffcultyStr = string.Empty;
             switch (diffculty)
@@ -100,7 +106,7 @@ namespace DiscordPlus
 				if (clientIdx != ClientSelected)
 				{
 					// Need re-init discord sdk
-					ModLogger.Debug($"Switch to {clientIdx}");
+					// ModLogger.Debug($"Switch to {clientIdx}");
 					ClientSelected = clientIdx;
 					ReInitDiscord(__instance);
 				}
@@ -114,7 +120,7 @@ namespace DiscordPlus
 				}
 				else if (musicPackage == "music_package_999")
                 {
-					string songName = Singleton<DataManager>.instance["Account"]["SelectedMusicName"].GetResult<string>();
+					string songName = VariableUtils.GetResult<string>(Singleton<DataManager>.instance["Account"]["SelectedMusicName"]);
 					JToken chart = ChartData.SelectToken($"$.[?(@.name=='{songName}')]");
 
 					if (chart != null) coverName = $"mdmc_{chart["id"]}";
@@ -144,29 +150,35 @@ namespace DiscordPlus
 					}
 				};
 			}
-			// Upadte activity
-			__instance.activityManager.UpdateActivity(activity, delegate (Result result)
-			{
-				if (result != Result.Ok)
+			
+			var thing = DelegateSupport.ConvertDelegate<Il2CppSystem.Action<Result>>
+				(new System.Action<Result>
+				(delegate(Result result)
 				{
-					ModLogger.Debug("Discord Update Activity Failed!");
-				}
-			});
+					if (result != Result.Ok)
+					{
+						// ModLogger.Debug("Discord Update Activity Failed!");
+					}
+				})
+			);
+			
+			// Update activity
+			__instance.m_ActivityManager.UpdateActivity(activity, new ActivityManager.UpdateActivityHandler(thing.Pointer));
 			return false;
 		}
 
 		public static void ReInitDiscord(DiscordManager instance)
 		{
 			// Dispose old instant
-			instance.applicationManager = null;
-			instance.activityManager = null;
-			instance.discord.Dispose();
+			instance.m_ApplicationManager = null;
+			instance.m_ActivityManager = null;
+			instance.m_Discord.Dispose();
 			// Init Discord SDK
-			instance.discord = new Discord.Discord(ClientIds[ClientSelected], 1UL);
-			if (instance.discord.IsInit == Result.Ok)
+			instance.m_Discord = new Discord.Discord(ClientIds[ClientSelected], 1UL);
+			if (instance.m_Discord.isInit == Result.Ok)
 			{
-				instance.activityManager = instance.discord.GetActivityManager();
-				instance.applicationManager = instance.discord.GetApplicationManager();
+				instance.m_ActivityManager = instance.m_Discord.GetActivityManager();
+				instance.m_ApplicationManager = instance.m_Discord.GetApplicationManager();
 			}
 		}
 	}
